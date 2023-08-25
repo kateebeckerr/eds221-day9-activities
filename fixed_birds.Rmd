@@ -19,7 +19,6 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(skimr)
 library(tidytext)
-library(here)
 ```
 
 ## Read in the data
@@ -34,7 +33,7 @@ The code below reads in and assigns multiple CSV files:
 ```{r, include = FALSE}
 
 # Create a list of file names you want to read in
-knb_files <- list.files(here("knb-lter-cap_256_9"), pattern = "*.csv")
+knb_files <- list.files("knb-lter-cap_256_9", pattern = "*.csv")
 
 # Loop over the files, reading in and creating a stored object with 'assign()'. See ?assign for more information.
 # stringr::str_remove() simplifies the file names
@@ -48,6 +47,7 @@ for (i in seq_along(knb_files)) {
          read_csv(here("knb-lter-cap_256_9", 
                        knb_files[i])))
 }
+
 ```
 
 ## Initial exploration
@@ -64,7 +64,7 @@ names(birds_1)
 skim(birds_1)
 
 # See the different species (species_id)
-unique(birds_1$species_id)
+unique(birds_1 %>% species_id)
 
 # Check out the taxa information
 head(taxalist_1)
@@ -76,7 +76,7 @@ The code below should join the information in `taxalist_1` to the `birds_1` data
 
 ```{r, include = FALSE}
 birds_df <- birds_1 %>% 
-  left_join(sites_1, by = "site_id")
+  left_join(taxalist_1, by = "species")
 ```
 
 ## Find total counts by park and plot top 15
@@ -86,7 +86,7 @@ The code below joins the site information to `birds_df`, then groups by and `par
 ```{r}
 bird_totals_by_park <- birds_df %>% 
   left_join(sites_1) %>% 
-  group_by(park_name) %>% 
+  groupby(park_name) %>% 
   summarize(total_count = sum(bird_count, na.rm = TRUE)) %>% 
   slice_max(total_count, n = 15) %>% 
   mutate(park_name = fct_reorder(park_name, total_count))
@@ -94,58 +94,42 @@ bird_totals_by_park <- birds_df %>%
 
 This code creates a plot of the top 15 parks by total bird count. 
 ```{r}
-class(bird_totals_by_park$total_count)
-
 ggplot(data = bird_totals_by_park, aes(x = total_count, y = park_name)) +
   geom_col() +
   labs(x = "Total bird count",
-       y = "Park name") +
+       y = "Park name") %>%
   theme_minimal()
 ```
+
 
 ## Find top 5 bird species by park, and make a graph
 
 The code below joins the site information to the bird count data, then finds the top five most observed birds (by frequency) at each park. 
 
 ```{r}
-common_birds <- sites_1 %>% 
-  full_join(birds_df) 
-
-common_site <- common_birds %>% 
-  full_join(sites_1)
-
-common_site1 <- common_birds %>%
-  full_join(taxalist_1) %>%
-  group_by(site_id, common_name) %>% 
+common_birds <- birds_df %>% 
+  semi_join(sites_1) %>% 
+  group_by(park_name, common_name) %>% 
   summarize(total_count = sum(bird_count, na.rm = TRUE)) %>% 
   slice_max(total_count, n = 5)
-
 ```
 
 The code below should limit the observations to the following parks: Cholla Cove, Desert Willow, Nueve, Orme, Palomino, and Sonrisa. Check output, for example using `unique()` to confirm.
 
 ```{r}
-common_birds <- sites_1 %>% 
-  full_join(birds_df) 
-
-
-selected_parks <- common_site %>%  
+selected_parks <- common_birds %>% 
   filter(park_name %in% c("Cholla Cove", "Desert Willow", "Nueve", "Orme", "Palamino", "Sonrisa"))
-
-view(selected_parks)
 ```
 
 The code below creates a faceted ggplot graph with the top 5 most frequently observed birds at each location. 
-```{r}
-final_birds <- common_site1 %>% 
-  full_join(common_site)
-
-view(final_birds)
-```
 
 ```{r}
-ggplot(data = final_birds, aes(x = common_name, y = total_count)) +
-  geom_col() 
+ggplot(data = selected_parks, y = common_name, x = total_count) +
+  geom_col() +
+  scale_x_continuous(limits = c(0, 3000)) +
+  facet_wrap(~park_name, scales = "free_y") +
+  theme_linedraw() +
+  labs(x = "\nTotal bird counts", y = "Common name")
 ```
 
 The code below exports the graph as a .jpg and saves in the project root.
